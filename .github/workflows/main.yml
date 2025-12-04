@@ -1,0 +1,27 @@
+# name: Deploy to Production
+# on:
+#   push:
+#     branches:
+#       - main
+# jobs:
+#   deploy:
+#     name: Deploy to Server
+#     runs-on: ubuntu-latest
+#
+#     steps:
+#       - name: 🚀 Deploy and Run
+#         uses: appleboy/ssh-action@v1.0.0
+#         with:
+#           host: ${{ secrets.SSH_HOST }}
+#           username: ${{ secrets.SSH_USER }}
+#           key: ${{ secrets.SSH_PRIVATE_KEY }}
+#           passphrase: ${{ secrets.INPUT_PASSPHRASE }}
+#           port: ${{ secrets.SSH_PORT }}
+#           script: |
+#             cd /home/deploy/business_calc
+#             git pull origin main
+#             docker compose -f docker-compose.prod.yml down
+#             docker compose -f docker-compose.prod.yml up -d --build
+#             sleep 10
+#             docker compose -f docker-compose.prod.yml ps
+#             docker image prune -f

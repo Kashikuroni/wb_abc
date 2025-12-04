@@ -1,0 +1,99 @@
+services:
+  db_postgres:
+    image: postgres:17
+    container_name: db_postgres
+    env_file:
+      - ./.envs/.env.database.dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    networks: [backend]
+
+  pgbackup:
+    image: prodrigestivill/postgres-backup-local:17
+    restart: unless-stopped
+    profiles: [prod]
+    env_file:
+      - ./.envs/.env.database.dev
+    volumes:
+      - ./backups:/backups
+    networks: [backend]
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.envs/.env.backend.dev
+      - ./.envs/.env.database.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+    networks: [backend, frontend]
+    command: sh -c "alembic upgrade head || exit 1 && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      - NEXT_DISABLE_TURBOPACK=1
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [frontend]
+    command: npm run dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/caddy_data:/data
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks: [frontend, backend]
+
+volumes:
+  postgres_data:
+
+networks:
+  backend: {}
+  frontend: {}
